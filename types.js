@@ -9,12 +9,14 @@ const TWEEN_LANE_FACTOR = 0.05;
 class Traffic {
   constructor() {
     this.cars = [];
-    this.queryStarts = [null, null, null, null];
+    this.queryStarts = [];
     this.width = HIGHWAY_WIDTH;
     this.height = LANE_HEIGHT *LANES + DIV_HEIGHT * (LANES+1);
-    this.addCar(Car.sports(), 0);
+    let sport = Car.sports();
+    this.addCar(sport, 0);
     this.addCar(Car.semi(), 1);
     this.addCar(Car.suv(), 2);
+    sport.targetY = this.getCarY(sport,3);
   }
   insertQuery(query) {
     // TODO: add
@@ -22,7 +24,7 @@ class Traffic {
   addCar(car,lane) {
     this.cars.push(car);
     car.traffic = this;
-    car.y(this.getCarY(car, lane));
+    car.y = this.getCarY(car, lane);
     car.realQuery.laneIdx = lane;
     this.insertQuery(car.realQuery);
   }
@@ -66,7 +68,7 @@ class Traffic {
   getCarY(car, lane) {
     return lane*LANE_HEIGHT+(lane+1)*DIV_HEIGHT
    + LANE_HEIGHT
-   / 2 - car.height() / 2;
+   / 2 - car.height / 2;
   }
 }
 
@@ -91,25 +93,22 @@ class Car {
     this.movingLanes = false;
     this.realQuery = new LaneQuery(this.transform,-1,this,true);
   }
-  x(v) {
-    if (v) this.transform[0] = v;
-    return this.transform[0];
-  }
-  y(v) {
-    if (v) this.transform[1] = v;
-    return this.transform[1];
-  }
-  centerY() {
+  get x() { return this.transform[0]; }
+  set x(v) { this.transform[0] = v; }
+
+  get y() { return this.transform[1]; }
+  set y(v) { this.transform[1] = v; }
+
+  get centerY() { 
     return this.transform[1] + this.transform[3] / 2;
   }
-  width(v) {
-    if (v) this.transform[2] = v;
-    return this.transform[2];
-  }
-  height(v) {
-    if (v) this.transform[3] = v;
-    return this.transform[3];
-  }
+
+  get width() { return this.transform[2]; }
+  set width(v) { this.transform[2] = v; }
+
+  get height() { return this.transform[3]; }
+  set height(v) { this.transform[3] = v; }
+
   changeLane(lane) {
     this.targetY = this.traffic.getCarY(this,lane);
   }
@@ -119,17 +118,16 @@ class Car {
     } else {
       this.speed = this.topSpeed;
     }
-    let tx = this.transform;
-    tx[0] += this.speed;
-    if (tx[0] > this.traffic.width) tx[0] = -tx[2]; // TODO: Add throughput measuring here.
+    this.x += this.speed;
+    if (this.x > this.traffic.width) this.x = -this.width; // TODO: Add throughput measuring here.
     if (this.targetY) {
       this.movingLanes = true;
-      let delta = ( this.targetY - tx[1] ) * TWEEN_LANE_FACTOR;
+      let delta = ( this.targetY - this.y ) * TWEEN_LANE_FACTOR;
       if (Math.abs(delta) < TWEEN_LANE_FACTOR) {
-        tx[1] = this.targetY;
+        this.y = this.targetY;
         this.targetY = null;
       } else {
-        tx[1] += delta;
+        this.y += delta;
       }
     } else {
       this.movingLanes = false;
@@ -137,8 +135,7 @@ class Car {
   }
   render(gfx) {
     gfx.fillStyle = this.color;
-    let tx = this.transform;
-    gfx.fillRect(tx[0],tx[1],tx[2],tx[3]);
+    gfx.fillRect(this.x,this.y,this.width,this.height);
   }
 }
 
@@ -156,7 +153,6 @@ class LaneQuery {
   }
   render(gfx) {
     gfx.strokeStyle = "#aaa";
-    let tx = this.transform;
-    gfx.strokeRect(tx[0],tx[1],tx[2],tx[3]);
+    gfx.strokeRect(this.x,this.y,this.width,this.height);
   }
 }
