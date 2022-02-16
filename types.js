@@ -11,10 +11,13 @@ const DEBUG_PDG = 2;
 class Traffic {
   constructor() {
     this.cars = [];
-    this.queryChainHeads = [];
+    this.queryChains = [];
+
+    for (let i=0;i<LANES;i++) this.queryChains[i] = [];
 
     let sport = Car.sports();
     this.addCar(sport, 0);
+    this.addCar(Car.suv(), 1);
     this.addCar(Car.semi(), 1);
     this.addCar(Car.semi(), 2);
     this.addCar(Car.suv(), 3);
@@ -24,32 +27,32 @@ class Traffic {
   get height() { return LANE_HEIGHT *LANES + DIV_HEIGHT * (LANES+1); }
 
   insertQuery(query) {
-    let head = this.queryChainHeads[query.laneIdx];
-    if (head == null || head == undefined) { // Empty lane
-      this.queryChainHeads[query.laneIdx] = query;
+    let lane = query.laneIdx;
+    let chain = this.queryChains[lane];
+    chain.push(query);
+    if (chain.length < 2) {
       query.next = query;
       query.last = query;
-    } else if (head.next == head && head.last == head) { // Solo lane
-      head.next = query;
-      head.last = query;
-      
-      query.next = head;
-      query.last = head;
-
-    } else { // Multi-car lane
-      // Find leftmost
-      let leftmost = head;
-      while (true) {
-        if (leftmost.last.x > leftmost.x) break; else {
-          leftmost = leftmost.last;
-        }
+    } else if (chain.length < 3) {
+      let a = chain[0], b = chain[1];
+      a.next = b;
+      a.last = b;
+      b.next = a;
+      b.last = a;
+    } else {
+      chain[0].last = chain[chain.length-1];
+      chain[0].next = chain[1];
+      for (let i=1;i<chain.length-1;i++) {
+        chain[i].last = chain[i-1];
+        chain[i].next = chain[i+1];
       }
-      // Find correct gap
-
+      chain[chain.length-1].last = chain[chain.length-2];
+      chain[chain.length-1].next = chain[0];
     }
   }
   removeQuery(query) {
-    // TODO: Implement this.
+    let chain = queryChain[query.laneIdx];
+    let idx = chain.indexOf(query);
   }
   addCar(car,lane) {
     this.cars.push(car);
@@ -62,19 +65,17 @@ class Traffic {
     for (const car of this.cars) {
       car.tick();
     }
+    for (const chain of this.queryChains) {
+      // TODO: in place array sort chain.sort by x
+    }
   }
   render(gfx) {
     this.drawRoads(gfx);
     for (const car of this.cars) {
       car.render(gfx);
     }
-    for (const head of this.queryChainHeads) {
-      if (head == null) continue;
-      let next = head;
-      do {
-        next.render(gfx);
-        next = next.next;
-      } while (next != head && next != null);
+    for (const chain of this.queryChains) {
+      for (const query of chain) query.render(gfx);
     }
   }
   drawRoads(gfx) {
