@@ -11,19 +11,22 @@ ctx.translate(0.5, 0.5);
 
 let traffic = new Traffic();
 
+let runningCheckbox = document.querySelector("#running");
+
 // Loop
 function draw() {
   stats.begin();
 
   // LOGIC
-
-  traffic.tick();
+  if (runningCheckbox.checked) {
+    traffic.tick();
+  }
 
   // RENDERING
 
   // Background fill
-  ctx.fillStyle = "#111";
-  ctx.fillRect(0, 0, 700, 700); // TODO: Find canvas values systematically.
+  ctx.fillStyle = "#000";
+  ctx.fillRect(0, 0, canvas.width, canvas.height); // TODO: Find canvas values systematically.
 
   traffic.render(ctx);
 

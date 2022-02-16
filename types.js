@@ -1,5 +1,6 @@
 const LANE_HEIGHT = 36;
 const HIGHWAY_WIDTH = 500;
+const RUNIN_LENGTH = 150; // should also be max vehicle width, 
 const LANES = 4;
 const DIV_HEIGHT = 2;
 const DIV_STRIPE_SIZE = 30;
@@ -13,16 +14,41 @@ class Traffic {
     this.cars = [];
     this.queryChains = [];
 
-    for (let i=0;i<LANES;i++) this.queryChains[i] = [];
+    this.x = RUNIN_LENGTH + 10;
+    this.y = 50;
 
+    this.laneBoundingBoxes = [];
+
+    // Add a better car insertion space finding algo.
+    this.laneInsertX = [];
+    this.laneInsertPadding = 30;
+
+    let bdgX = -HIGHWAY_WIDTH;
+    let bdgY = DIV_HEIGHT;
+    let bdgW = HIGHWAY_WIDTH * 3;
+    let bdgH = LANE_HEIGHT;
+    for (let i=0;i<LANES;i++) {
+      this.queryChains[i] = [];
+      this.laneInsertX[i] = 0;
+      this.laneBoundingBoxes.push(new Vector(bdgX,bdgY,bdgW,bdgH));
+      bdgY += LANE_HEIGHT + DIV_HEIGHT;
+    }
     let sport = Car.sports();
     this.addCar(sport, 0);
     this.addCar(Car.suv(), 1);
-    this.addCar(Car.semi(), 1);
     this.addCar(Car.semi(), 2);
+    this.addCar(Car.semi(), 2);
+    this.addCar(Car.semi(), 2);
+    this.addCar(Car.semi(), 3);
     this.addCar(Car.suv(), 3);
     sport.attemptMergeDown();
   }
+
+  get x() { return this.posX; }
+  set x(v) { this.posX = v; }
+  get y() { return this.posY; }
+  set y(v) { this.posY = v; }
+
   get width() { return HIGHWAY_WIDTH; }
   get height() { return LANE_HEIGHT *LANES + DIV_HEIGHT * (LANES+1); }
 
@@ -30,7 +56,18 @@ class Traffic {
     let lane = query.laneIdx;
     let chain = this.queryChains[lane];
     chain.push(query);
+    this.sortChainByV(chain);
+    this.resetQueryChainLinks(chain);
+  }
+  removeQuery(query) {
+    let chain = queryChain[query.laneIdx];
+    let idx = chain.indexOf(query);
+    if (idx < 0) alert("QUERY NOT FOUND IN CHAIN!");
+    this.resetQueryChainLinks();
+  }
+  resetQueryChainLinks(chain) { // Reassign next/last property of each query within chain according to indexes.
     if (chain.length < 2) {
+      let query = chain[0];
       query.next = query;
       query.last = query;
     } else if (chain.length < 3) {
@@ -50,26 +87,40 @@ class Traffic {
       chain[chain.length-1].next = chain[0];
     }
   }
-  removeQuery(query) {
-    let chain = queryChain[query.laneIdx];
-    let idx = chain.indexOf(query);
+  sortChainByV(chain) { // Sort chain by queries' value.
+    // Insertion sort ( might be able to find a better algo for my data. )
+    let i = 1;
+    while (i < chain.length) {
+        let j = i;
+        while (j > 0 && chain[j-1].v > chain[j].v) {
+            arrSwap(chain,j,j-1);
+            j--;
+        }
+        i++;
+    }
+    return;
   }
   addCar(car,lane) {
     this.cars.push(car);
     car.traffic = this;
+    car.laneIdx = lane;
     car.y = this.getCarY(car, lane);
     car.realQuery = new LaneQuery(new Vector(), car.lane, car, true);
     this.insertQuery(car.realQuery);
+    car.x = this.laneInsertX[lane];
+    this.laneInsertX[lane] += car.width + this.laneInsertPadding;
   }
   tick() {
     for (const car of this.cars) {
       car.tick();
     }
     for (const chain of this.queryChains) {
-      // TODO: in place array sort chain.sort by x
+      this.sortChainByV(chain);
+      this.resetQueryChainLinks(chain);
     }
   }
   render(gfx) {
+    gfx.translate(this.x,this.y);
     this.drawRoads(gfx);
     for (const car of this.cars) {
       car.render(gfx);
@@ -77,6 +128,11 @@ class Traffic {
     for (const chain of this.queryChains) {
       for (const query of chain) query.render(gfx);
     }
+    for (const lane of this.laneBoundingBoxes) {
+      gfx.strokeStyle = "#a2a";
+      gfx.strokeRect(lane.x,lane.y,lane.w,lane.h);
+    }
+    gfx.translate(-this.x,-this.y);
   }
   drawRoads(gfx) {
     gfx.fillStyle = "#222"; // road color.
@@ -87,11 +143,11 @@ class Traffic {
      + l*DIV_HEIGHT
     );
     }
-    gfx.beginPath();
-    gfx.rect(0,0,HIGHWAY_WIDTH, LANE_HEIGHT
-  *LANES+(LANES+1)*DIV_HEIGHT
-);
-    gfx.clip();
+//     gfx.beginPath();
+//     gfx.rect(0,0,HIGHWAY_WIDTH, LANE_HEIGHT
+//   *LANES+(LANES+1)*DIV_HEIGHT
+// );
+//     gfx.clip();
     gfx.fillStyle = "#aaa"; // div color
     for (let x=0; x < HIGHWAY_WIDTH; x+= DIV_STRIPE_SIZE * 2) {
       for (const y of ys) {
@@ -166,7 +222,7 @@ class Car {
       this.speed = this.topSpeed;
     }
     this.x += this.speed;
-    if (this.x > this.traffic.width) this.x = -this.width; // TODO: Add throughput measuring here.
+    if (this.x > this.traffic.width) this.x = -RUNIN_LENGTH; // TODO: Add throughput measuring here.
 
     // if (this.targetY) {
     //   this.movingLanes = true;
@@ -189,7 +245,7 @@ class Car {
 
 class LaneQuery {
   constructor(offset, laneIdx, car, real) {
-    this.offset = offset; // Vector
+    this.offset = offset; // Vector (only x,y, inherits size from owner)
     this.laneIdx = laneIdx;
     this.owner = car; 
     this.real = real;
@@ -204,12 +260,35 @@ class LaneQuery {
   render(gfx) {
     gfx.strokeStyle = "#aaa";
     gfx.strokeRect(this.x, this.y, this.width, this.height);
-    if (!this.real) gfxDrawLine(gfx, this.centerX, this.centerY, this.owner.centerX, this.owner.centerY);
-    if (this.next != this) {
+    if (!this.real) gfxDrawLineP2P(gfx, this.centerX, this.centerY, this.owner.centerX, this.owner.centerY);
+    let dn = this.distNext();
+    if (dn != null) {
       gfx.strokeStyle = "#2aa";
-      gfxDrawLine(gfx, this.centerX, this.centerY+DEBUG_PDG, this.next.centerX, this.next.centerY+DEBUG_PDG);
-      gfx.strokeStyle = "#a2a";
-      gfxDrawLine(gfx, this.centerX, this.centerY-DEBUG_PDG, this.last.centerX, this.last.centerY-DEBUG_PDG);
+      gfxDrawLineOffset(gfx, this.rx, this.centerY+DEBUG_PDG, dn, 0);
+    }
+    let dl = this.distLast();
+    if (dl != null) {
+      gfx.strokeStyle = "#aa2";
+      gfxDrawLineOffset(gfx, this.x, this.centerY-DEBUG_PDG, -dl, 0);
+    }
+  }
+  // TODO: FIX DISTANCE FUNCTIONS TO UTILIZE FIXED RUN-IN LENGTH FOR ALL VEHICLES
+  distNext() { 
+    let next = this.next;
+    if (next == this) return null;
+    if (next.x < this.rx) {
+      return Math.max(HIGHWAY_WIDTH - this.rx,0) + Math.max(next.x,0);
+    } else {
+      return next.x - this.rx;
+    }
+  }
+  distLast() {
+    let last = this.last;
+    if (last == this) return null;
+    if (last.rx > this.x) {
+      return Math.max(HIGHWAY_WIDTH - last.rx,0) + Math.max(this.x,0);
+    } else {
+      return this.x - last.rx;
     }
   }
 
@@ -217,9 +296,14 @@ class LaneQuery {
   get y() { return this.owner.y + this.offset.y; }
   get width() { return this.owner.width; }
   get height() { return this.owner.height; }
+
+  get rx() { return this.x + this.width; }
+  get by() { return this.y + this.height; }
   
   get centerX() { return this.owner.centerX + this.offset.x; }
   get centerY() { return this.owner.centerY + this.offset.y; }
+
+  get v() { return this.x; } // Used in chain sorting.
 
 }
 
@@ -255,13 +339,29 @@ class Vector {
   get height() { return this.h; }
   set height(v) { this.h = v; }
 
+  get rx() { return this.x + this.width; } // right x
+  get by() { return this.y + this.height; } // bottom y
+
   get centerX() { return this.x + this.w / 2};
   get centerY() { return this.y + this.h / 2};
 }
 
-function gfxDrawLine(gfx,x1,y1,x2,y2) {
+function gfxDrawLineP2P(gfx,x1,y1,x2,y2) {
   gfx.beginPath();
   gfx.moveTo(x1,y1);
   gfx.lineTo(x2,y2);
   gfx.stroke();
+}
+function gfxDrawLineOffset(gfx,x1,y1,x2,y2) {
+  gfx.beginPath();
+  gfx.moveTo(x1,y1);
+  gfx.lineTo(x1+x2,y1+y2);
+  gfx.stroke();
+}
+
+
+function arrSwap(a,x,y) { // array, a idx, b idx.
+  let t = a[x]; // temp
+  a[x] = a[y];
+  a[y] = t;
 }
