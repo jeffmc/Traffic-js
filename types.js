@@ -14,7 +14,7 @@ class Traffic {
     this.cars = [];
     this.queryChains = [];
 
-    this.x = RUNIN_LENGTH + 10;
+    this.x = RUNIN_LENGTH; // highway start, RUN in renderer left of this.
     this.y = 50;
 
     this.laneBoundingBoxes = [];
@@ -23,9 +23,9 @@ class Traffic {
     this.laneInsertX = [];
     this.laneInsertPadding = 30;
 
-    let bdgX = -HIGHWAY_WIDTH;
+    let bdgX = 0;
     let bdgY = DIV_HEIGHT;
-    let bdgW = HIGHWAY_WIDTH * 3;
+    let bdgW = RUNIN_LENGTH * 2 + HIGHWAY_WIDTH;
     let bdgH = LANE_HEIGHT;
     for (let i=0;i<LANES;i++) {
       this.queryChains[i] = [];
@@ -121,6 +121,7 @@ class Traffic {
   }
   render(gfx) {
     gfx.translate(this.x,this.y);
+    gfx.translate(-RUNIN_LENGTH,0);
     this.drawRoads(gfx);
     for (const car of this.cars) {
       car.render(gfx);
@@ -132,26 +133,22 @@ class Traffic {
       gfx.strokeStyle = "#a2a";
       gfx.strokeRect(lane.x,lane.y,lane.w,lane.h);
     }
+    gfx.translate(RUNIN_LENGTH,0);
     gfx.translate(-this.x,-this.y);
   }
   drawRoads(gfx) {
     gfx.fillStyle = "#222"; // road color.
-    gfx.fillRect(0,0,this.width,this.height);
+    gfx.fillRect(RUNIN_LENGTH,0,this.width,this.height);
     let ys = [];
     for (let l=0;l<=LANES;l++) {
       ys.push(l*LANE_HEIGHT
      + l*DIV_HEIGHT
     );
     }
-//     gfx.beginPath();
-//     gfx.rect(0,0,HIGHWAY_WIDTH, LANE_HEIGHT
-//   *LANES+(LANES+1)*DIV_HEIGHT
-// );
-//     gfx.clip();
     gfx.fillStyle = "#aaa"; // div color
-    for (let x=0; x < HIGHWAY_WIDTH; x+= DIV_STRIPE_SIZE * 2) {
+    for (let x = 0; x <HIGHWAY_WIDTH; x+= DIV_STRIPE_SIZE * 2) {
       for (const y of ys) {
-        gfx.fillRect(x,y,DIV_STRIPE_SIZE, DIV_HEIGHT
+        gfx.fillRect(x + RUNIN_LENGTH,y,DIV_STRIPE_SIZE, DIV_HEIGHT
       );
       }
     }
@@ -222,7 +219,7 @@ class Car {
       this.speed = this.topSpeed;
     }
     this.x += this.speed;
-    if (this.x > this.traffic.width) this.x = -RUNIN_LENGTH; // TODO: Add throughput measuring here.
+    if (this.x > this.traffic.width) this.x = 0; // TODO: Add throughput measuring here.
 
     // if (this.targetY) {
     //   this.movingLanes = true;
@@ -264,31 +261,17 @@ class LaneQuery {
     let dn = this.distNext();
     if (dn != null) {
       gfx.strokeStyle = "#2aa";
-      gfxDrawLineOffset(gfx, this.rx, this.centerY+DEBUG_PDG, dn, 0);
-    }
-    let dl = this.distLast();
-    if (dl != null) {
-      gfx.strokeStyle = "#aa2";
-      gfxDrawLineOffset(gfx, this.x, this.centerY-DEBUG_PDG, -dl, 0);
+      gfxDrawLineOffset(gfx, this.rx, this.centerY, dn, 0);
     }
   }
-  // TODO: FIX DISTANCE FUNCTIONS TO UTILIZE FIXED RUN-IN LENGTH FOR ALL VEHICLES
-  distNext() { 
+  distNext() { // TODO: Fix this with respect to new RUNIN rules.
+  // Add memorized getter per tick as to only calculate once per tick.
     let next = this.next;
     if (next == this) return null;
     if (next.x < this.rx) {
-      return Math.max(HIGHWAY_WIDTH - this.rx,0) + Math.max(next.x,0);
+      return HIGHWAY_WIDTH + RUNIN_LENGTH - this.rx + next.x;
     } else {
       return next.x - this.rx;
-    }
-  }
-  distLast() {
-    let last = this.last;
-    if (last == this) return null;
-    if (last.rx > this.x) {
-      return Math.max(HIGHWAY_WIDTH - last.rx,0) + Math.max(this.x,0);
-    } else {
-      return this.x - last.rx;
     }
   }
 
@@ -344,6 +327,10 @@ class Vector {
 
   get centerX() { return this.x + this.w / 2};
   get centerY() { return this.y + this.h / 2};
+
+  intersects(o) { // o: Other vector
+    // TODO: Add boolean return.
+  }
 }
 
 function gfxDrawLineP2P(gfx,x1,y1,x2,y2) {
