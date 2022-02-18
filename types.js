@@ -9,6 +9,9 @@ const TWEEN_LANE_FACTOR = 0.05;
 
 const DEBUG_PDG = 2;
 
+
+let carThroughput = 0, arraySwaps = 0;
+
 class Traffic {
   constructor() {
     this.cars = [];
@@ -53,39 +56,16 @@ class Traffic {
   get height() { return LANE_HEIGHT *LANES + DIV_HEIGHT * (LANES+1); }
 
   insertQuery(query) {
-    let lane = query.laneIdx;
+    let lane = query.chainIdx;
     let chain = this.queryChains[lane];
     chain.push(query);
+    query.idx = chain.length-1;
     this.sortChainByV(chain);
-    this.resetQueryChainLinks(chain);
   }
   removeQuery(query) {
-    let chain = queryChain[query.laneIdx];
+    let chain = queryChain[query.chainIdx];
     let idx = chain.indexOf(query);
     if (idx < 0) alert("QUERY NOT FOUND IN CHAIN!");
-    this.resetQueryChainLinks();
-  }
-  resetQueryChainLinks(chain) { // Reassign next/last property of each query within chain according to indexes.
-    if (chain.length < 2) {
-      let query = chain[0];
-      query.next = query;
-      query.last = query;
-    } else if (chain.length < 3) {
-      let a = chain[0], b = chain[1];
-      a.next = b;
-      a.last = b;
-      b.next = a;
-      b.last = a;
-    } else {
-      chain[0].last = chain[chain.length-1];
-      chain[0].next = chain[1];
-      for (let i=1;i<chain.length-1;i++) {
-        chain[i].last = chain[i-1];
-        chain[i].next = chain[i+1];
-      }
-      chain[chain.length-1].last = chain[chain.length-2];
-      chain[chain.length-1].next = chain[0];
-    }
   }
   sortChainByV(chain) { // Sort chain by queries' value.
     // Insertion sort ( might be able to find a better algo for my data. )
@@ -93,20 +73,24 @@ class Traffic {
     while (i < chain.length) {
         let j = i;
         while (j > 0 && chain[j-1].v > chain[j].v) {
-            arrSwap(chain,j,j-1);
+            this.chainSwap(chain,j,j-1);
             j--;
         }
         i++;
     }
     return;
   }
+  chainSwap(c,a,b) { // arrSwap with chainIdx updating.
+    arrSwap(c,a,b);
+    c[a].idx = a;
+    c[b].idx = b;
+  }
   addCar(car,lane) {
     this.cars.push(car);
     car.traffic = this;
     car.laneIdx = lane;
     car.y = this.getCarY(car, lane);
-    car.realQuery = new LaneQuery(new Vector(), car.lane, car, true);
-    this.insertQuery(car.realQuery);
+    LaneQuery.real(car);
     car.x = this.laneInsertX[lane];
     this.laneInsertX[lane] += car.width + this.laneInsertPadding;
   }
@@ -116,7 +100,6 @@ class Traffic {
     }
     for (const chain of this.queryChains) {
       this.sortChainByV(chain);
-      this.resetQueryChainLinks(chain);
     }
   }
   render(gfx) {
@@ -181,10 +164,10 @@ class Car {
     this.topSpeed = t;
     this.speed = 0;
     this.traffic = null;
-    // this.targetY = null;
-    // this.movingLanes = false;
     this.realQuery = null;
     this.testQuery = null;
+
+    this.focused = false; // should only have one focused car at any given time.
   }
 
   get x() { return this.transform.x; }
@@ -202,14 +185,18 @@ class Car {
 
   get lane() { return this.traffic.getLaneAtY(this.centerY); }
 
-  cleanCurrentTestQuery() {
+  cleanTestQuery() {
     if (this.testQuery == null) return;
     this.traffic.removeQuery(this.testQuery); 
+    this.testQuery = null;
+  }
+  cleanRealQuery() {
+    if (this.realQuery == null) return;
+    this.traffic.removeQuery(this.realQuery);
+    this.realQuery = null;
   }
   attemptMergeDown() {
-    this.cleanCurrentTestQuery();
-    this.testQuery = new LaneQuery(new Vector(0,LANE_HEIGHT+DIV_HEIGHT),this.lane+1,this,false);
-    this.traffic.insertQuery(this.testQuery);
+    LaneQuery.test(this,1);
   }
 
   tick() {
@@ -219,7 +206,10 @@ class Car {
       this.speed = this.topSpeed;
     }
     this.x += this.speed;
-    if (this.x > this.traffic.width) this.x = 0; // TODO: Add throughput measuring here.
+    if (this.x > this.traffic.width + RUNIN_LENGTH) {
+      this.x = 0; // TODO: Add throughput measuring here.
+      carThroughput++;
+    }
 
     // if (this.targetY) {
     //   this.movingLanes = true;
@@ -241,18 +231,32 @@ class Car {
 }
 
 class LaneQuery {
-  constructor(offset, laneIdx, car, real) {
+
+  // clean, create new, and insert query for car.
+  static real(car) {
+    let q = new LaneQuery(new Vector(), car.lane, car, true);
+    car.cleanRealQuery();
+    car.realQuery = q;
+    car.traffic.insertQuery(q);
+    return q;
+  }
+
+  static test(car, loffset) {
+    let q = new LaneQuery(new Vector(0,(LANE_HEIGHT + DIV_HEIGHT) * loffset), car.lane + loffset, car, false);
+    car.cleanTestQuery();
+    car.testQuery;
+    car.traffic.insertQuery(q);
+    return q;
+  }
+
+  constructor(offset, chainIdx, car, real) {
     this.offset = offset; // Vector (only x,y, inherits size from owner)
-    this.laneIdx = laneIdx;
-    this.owner = car; 
+    this.chainIdx = chainIdx;
+    this.idx = -1;
+    this.owner = car;
     this.real = real;
 
-    // Chain/Linked list members 
-    this.next = null;
-    this.last = null;
-  }
-  traffic() {
-    return this.owner.traffic;
+    // this.tempNext = null;
   }
   render(gfx) {
     gfx.strokeStyle = "#aaa";
@@ -273,6 +277,20 @@ class LaneQuery {
     } else {
       return next.x - this.rx;
     }
+  }
+
+  get next() {
+    let nidx = this.idx + 1;
+    let chain = this.chain;
+    return chain[(nidx < chain.length ? nidx : 0)]; // return next or first if last.
+  }
+
+  get chain() {
+    return this.traffic.queryChains[this.chainIdx];
+  }
+
+  get traffic() {
+    return this.owner.traffic;
   }
 
   get x() { return this.owner.x + this.offset.x; }
@@ -346,9 +364,9 @@ function gfxDrawLineOffset(gfx,x1,y1,x2,y2) {
   gfx.stroke();
 }
 
-
 function arrSwap(a,x,y) { // array, a idx, b idx.
   let t = a[x]; // temp
   a[x] = a[y];
   a[y] = t;
+  arraySwaps++;
 }
