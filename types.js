@@ -124,17 +124,20 @@ class Traffic {
     gfx.fillRect(RUNIN_LENGTH,0,this.width,this.height);
     let ys = [];
     for (let l=0;l<=LANES;l++) {
-      ys.push(l*LANE_HEIGHT
-     + l*DIV_HEIGHT
-    );
+      let y = l*LANE_HEIGHT + l*DIV_HEIGHT + DIV_HEIGHT / 2;
+      ys.push(y);
     }
     gfx.fillStyle = "#aaa"; // div color
-    for (let x = 0; x <HIGHWAY_WIDTH; x+= DIV_STRIPE_SIZE * 2) {
-      for (const y of ys) {
-        gfx.fillRect(x + RUNIN_LENGTH,y,DIV_STRIPE_SIZE, DIV_HEIGHT
-      );
-      }
+    gfx.strokeStyle = "#aaa";
+    gfx.setLineDash([40, 10]);
+    for (let y of ys) {
+      gfx.beginPath();
+      gfx.moveTo(this.x, y);
+      gfx.lineTo(this.x + this.width, y);
+      gfx.stroke();
     }
+    gfx.setLineDash([]);
+    // gfx.fillRect(x + RUNIN_LENGTH,y,DIV_STRIPE_SIZE, DIV_HEIGHT);
   }
   getLaneAtY(y) {
     let totalLane = LANE_HEIGHT + DIV_HEIGHT;
@@ -231,7 +234,6 @@ class Car {
 }
 
 class LaneQuery {
-
   // clean, create new, and insert query for car.
   static real(car) {
     let q = new LaneQuery(new Vector(), car.lane, car, true);
