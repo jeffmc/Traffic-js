@@ -5,6 +5,8 @@ const LANES = 4;
 const DIV_HEIGHT = 2;
 const DIV_STRIPE_SIZE = 30;
 
+const TRAFFIC_PADDING = 30;
+
 const TWEEN_LANE_FACTOR = 0.05;
 
 const DEBUG_PDG = 2;
@@ -24,7 +26,7 @@ class Traffic {
 
     // Add a better car insertion space finding algo.
     this.laneInsertX = [];
-    this.laneInsertPadding = 30;
+    this.trafficPadding = TRAFFIC_PADDING;
 
     let bdgX = 0;
     let bdgY = DIV_HEIGHT;
@@ -92,7 +94,7 @@ class Traffic {
     car.y = this.getCarY(car, lane);
     LaneQuery.real(car);
     car.x = this.laneInsertX[lane];
-    this.laneInsertX[lane] += car.width + this.laneInsertPadding;
+    this.laneInsertX[lane] += car.width + this.trafficPadding;
   }
   tick() {
     for (const car of this.cars) {
@@ -261,7 +263,7 @@ class LaneQuery {
     // this.tempNext = null;
   }
   render(gfx) {
-    gfx.strokeStyle = "#aaa";
+    gfx.strokeStyle = this.real ? "#aaa" : "#aa2";
     gfx.strokeRect(this.x, this.y, this.width, this.height);
     if (!this.real) gfxDrawLineP2P(gfx, this.centerX, this.centerY, this.owner.centerX, this.owner.centerY);
     let dn = this.distNext();
@@ -348,9 +350,9 @@ class Vector {
   get centerX() { return this.x + this.w / 2};
   get centerY() { return this.y + this.h / 2};
 
-  intersects(o) { // o: Other vector
-    // TODO: Add boolean return.
-  }
+  // intersects(o) { // o: Other vector
+  //   // TODO: Add boolean return.
+  // }
 }
 
 function gfxDrawLineP2P(gfx,x1,y1,x2,y2) {
