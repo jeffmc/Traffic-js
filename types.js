@@ -1,28 +1,41 @@
+const CoMBOXSZ = 3;
+const CoMBOXSZ2 = CoMBOXSZ*2;
+
+const LANESZ = 16;
+const LANEBUF = 2;
+
 let carThroughput = 0;
+let c1, c2;
 
 class Traffic {
   constructor() {
     this.cars = [];
+    this.lanes = [[], [], []];
     this.collisions = [];
     
     this.x = 10;
     this.y = 50;
     this.width = 400;
-    this.height = 16; // 42 per car width
+    this.height = this.lanes.length*(LANESZ+LANEBUF)-LANEBUF; // 42 per car width
 
-    let c1 = Car.sports(), c2 = Car.sports();
-    this.addCar(c1);
-    this.addCar(c2);
-    c2.x += 120;
-    c1.maxSpeed();
-    c2.maxSpeed();
-    c2.target(0);
+    c1 = Car.sports();
+    c2 = Car.sports();
+    this.addCar(c1, 1);
+    this.addCar(c2, 0);
+    c1.instantTopSpeed();
+    c2.target(c2.topSpeed);
   }
-  addCar(car) {
+  addCar(car, lane) {
+    if (lane == undefined || lane >= this.lanes.length || lane < 0) console.log("INVALID LANE: " + lane);
     car.traffic = this;
+    car.y = lane * (LANESZ+LANEBUF);
     this.cars.push(car);
+    this.lanes[0].push(car);
   }
   tick() {
+    if (c2.speed >= c2.topSpeed) {
+      c2.target(0);
+    }
     for (const car of this.cars) {
       car.tick();
     }
@@ -44,8 +57,12 @@ class Traffic {
   }
   render(gfx) {
     gfx.translate(this.x,this.y);
-    gfx.fillStyle = "#333";
+    gfx.fillStyle = "#222";
     gfx.fillRect(0,0,this.width,this.height);
+    gfx.fillStyle = "#333";
+    for (let y=0;y<this.height;y+=(LANESZ+LANEBUF)) {
+      gfx.fillRect(0,y,this.width,LANESZ);
+    }
     for (const car of this.cars) {
       car.render(gfx);
     }
@@ -67,6 +84,8 @@ class Car {
     return new Car(0,0,50,20,"#22a", 0.02, 0.03, 2);
   }
   constructor(x,y,w,h,c,a,b,t) {
+    this.wheelX = x;
+    this.xOffset = 5;
     this.transform = new Transform(x,y,w,h);
     this.color = c;
     this.forceColor = "#22a";
@@ -79,7 +98,7 @@ class Car {
 
     this.focused = false; // should only have one focused car at any given time.
   }
-  maxSpeed() {
+  instantTopSpeed() {
     this.speed = this.topSpeed;
     this.targetSpeed = this.topSpeed;
   }
@@ -88,7 +107,13 @@ class Car {
   }
 
   get x() { return this.transform.x; }
-  set x(v) { this.transform.x = v; }
+  set x(v) { 
+    this.transform.x = v;
+    this.wheelX = v - this.xOffset; 
+  }
+  get wx() { return this.wheelX };
+  set wx(v) { this.wheelX = v; }
+  get wcx() { return this.wheelX + this.transform.width / 2}; 
   get y() { return this.transform.y; }
   set y(v) { this.transform.y = v; }
 
@@ -121,7 +146,9 @@ class Car {
       this.forceColor = "#22a";
     }
     this.speed += a;
-    this.x += this.speed;
+    this.wheelX += this.speed;
+    this.xOffset = this.xOffset + 0.3*(-a*50-this.xOffset);
+    this.x = this.wheelX + this.xOffset;
     if (this.x > this.traffic.width) {
       this.x = 0; // TODO: Add throughput measuring here.
       carThroughput++;
@@ -131,7 +158,15 @@ class Car {
     gfx.fillStyle = this.color;
     gfx.fillRect(this.x,this.y,this.width,this.height);
     gfx.strokeStyle = this.forceColor;
+   
+    // gfxDrawLineOffset(gfx, this.x, this.centerY, 
+    //                   this.width, 0);
+    // gfxDrawLineOffset(gfx, this.centerX, this.y,
+    //                  0, this.height);
+    gfxDrawLineP2P(gfx, this.wcx,this.centerY,
+                  this.centerX,this.centerY);
     gfx.strokeRect(this.x,this.y,this.width,this.height);
+    gfx.strokeRect(this.wcx-CoMBOXSZ,this.centerY-CoMBOXSZ,CoMBOXSZ2,CoMBOXSZ2);
   }
 }
 
