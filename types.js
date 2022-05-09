@@ -8,7 +8,7 @@ const LANESZ = 16;
 const LANEBUF = 2;
 
 let carThroughput = 0;
-let c1, c2;
+let c1, c2, c3;
 
 class Traffic {
   constructor() {
@@ -26,11 +26,13 @@ class Traffic {
     
     c1 = Car.sports();
     c2 = Car.sports();
-    this.addCar(c1, 1);
-    this.addCar(c2, 0);
+    c3 = Car.sports();
+    this.addCar(c1, 0);
+    this.addCar(c2, 1);
+    this.addCar(c3, 2);
     c1.instantTopSpeed();
-    c2.target(c2.topSpeed);
-
+    c3.target(c3.topSpeed);
+    
     this.grapher.setCar(c2);
   }
   addCar(car, lane) {
@@ -43,6 +45,8 @@ class Traffic {
   tick() {
     if (c2.speed >= c2.topSpeed) {
       c2.target(0);
+    } else if (c2.speed <= 0) {
+      c2.target(c2.topSpeed);
     }
     for (const car of this.cars) {
       car.tick();
@@ -135,17 +139,20 @@ class Car {
   set height(v) { this.transform.height = v; }
 
   tick() {
-    if (this.targetSpeed > this.topSpeed) {
-      this.targetSpeed = this.topSpeed;
-    }
+    // Limiter
+    this.target(this.targetSpeed); // Ensure target is within viable bounds (0 <  x < topSpeed )
+    
+    let exact = false; // If speed is set to topSpeed
     let d = this.targetSpeed - this.speed;
     let a;
-    if (d >= this.power) {
+    if (d > this.power) {
       a = this.power;
-    } else if (d <= -this.braking) {
+    } else if (d < -this.braking) {
       a = -this.braking;
     } else {
       a = d;
+      exact = true;
+      this.speed = this.targetSpeed;
     }
     if (a > 0) {
       this.forceColor = "#2a2";
@@ -154,14 +161,19 @@ class Car {
     } else {
       this.forceColor = "#22a";
     }
-    this.speed += a;
+    if (!exact) this.speed += a;
     this.wheelX += this.speed;
-    this.xOffset = this.xOffset + 0.3*(-a*50-this.xOffset);
-    this.x = this.wheelX + this.xOffset;
-    if (this.x > this.traffic.width) {
-      this.x = 0; // TODO: Add throughput measuring here.
+
+    // Rollover
+    if (this.wheelX > this.traffic.width) {
+      this.wheelX = 0; // TODO: Add throughput measuring here.
       carThroughput++;
     }
+    
+    // Car sway offset maths
+    this.xOffset = this.xOffset + 0.3*(-a*50-this.xOffset);
+    this.x = this.wheelX + this.xOffset;
+    
   }
   render(gfx) {
     gfx.fillStyle = this.color;
@@ -182,7 +194,7 @@ class Car {
 class Grapher {
   constructor(car) {
     this.setCar(car);
-    this.x = 10;
+    this.x = 50;
     this.y = 400;
     this.width = 250;
     this.height = 250;
@@ -204,7 +216,6 @@ class Grapher {
     gfx.strokeStyle = this.border;
     gfx.fillRect(0,0,this.width,this.height);
     gfx.strokeRect(0,0,this.width,this.height);
-    gfx.strokeStyle = this.line;
     let c = this.car;
     gfx.translate(0,this.height);
     if (c != undefined && c != null) {
@@ -212,15 +223,28 @@ class Grapher {
       this.f = this.width / stopping;
       let lx = 0, ly = 0, tx, ty;
 
-      // Vertex
+      // Vertex / scaling
       let vx = stopping;
       let vy = brakingFunc(c,vx);
       if (vy*this.f > this.height) 
         this.f = this.height / vy;
+      if (this.f > 10) this.f = 10; // Finalize scalar
       vx *= this.f;
       vy *= -this.f;
-      gfxDrawLineP2P(gfx,vx,0,vx,vy);
+      gfx.strokeStyle = this.line;
+      
+      // Labels
+      gfx.strokeStyle = this.border;
+      gfx.strokeText("Ticks", 8,10);
+      gfx.strokeText("Pixels", -32,-10);
+      let v = Math.round(this.width / this.f);
+      gfx.strokeText(v, this.width-(v >= 100?16:11),8);
+      v = Math.round(this.height / this.f);
+      gfx.strokeText(v, v >= 100 ? -20 : -15,-this.height+8);
+      
 
+      gfx.strokeStyle = this.line;
+      gfxDrawLineP2P(gfx,vx,0,vx,vy); // Draw vertex
       // Points per tick
       for (let x=0;x<stopping;x++) {
         tx = x * this.f;
