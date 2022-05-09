@@ -1,6 +1,9 @@
 const CoMBOXSZ = 3;
 const CoMBOXSZ2 = CoMBOXSZ*2;
 
+const GPTBOXSZ = 2;
+const GPTBOXSZ2 = GPTBOXSZ*2;
+
 const LANESZ = 16;
 const LANEBUF = 2;
 
@@ -12,18 +15,23 @@ class Traffic {
     this.cars = [];
     this.lanes = [[], [], []];
     this.collisions = [];
+    this.grapher = new Grapher(null);
     
     this.x = 10;
     this.y = 50;
     this.width = 400;
     this.height = this.lanes.length*(LANESZ+LANEBUF)-LANEBUF; // 42 per car width
 
+    this.grapher.y = this.y + this.height + 10;
+    
     c1 = Car.sports();
     c2 = Car.sports();
     this.addCar(c1, 1);
     this.addCar(c2, 0);
     c1.instantTopSpeed();
     c2.target(c2.topSpeed);
+
+    this.grapher.setCar(c2);
   }
   addCar(car, lane) {
     if (lane == undefined || lane >= this.lanes.length || lane < 0) console.log("INVALID LANE: " + lane);
@@ -70,6 +78,7 @@ class Traffic {
       col.draw(gfx);
     }
     gfx.translate(-this.x,-this.y);
+    this.grapher.draw(gfx);
   }
 }
 
@@ -168,6 +177,69 @@ class Car {
     gfx.strokeRect(this.x,this.y,this.width,this.height);
     gfx.strokeRect(this.wcx-CoMBOXSZ,this.centerY-CoMBOXSZ,CoMBOXSZ2,CoMBOXSZ2);
   }
+}
+
+class Grapher {
+  constructor(car) {
+    this.setCar(car);
+    this.x = 10;
+    this.y = 400;
+    this.width = 250;
+    this.height = 250;
+    this.f = 2;
+    this.bg = "#222";
+    this.line = "#0cc";
+    this.border = "#077";
+  }
+  setCar(car) {
+    if (!car) {
+      this.car = null;
+    } else {
+      this.car = car;
+    }
+  }
+  draw(gfx) {
+    gfx.translate(this.x,this.y);
+    gfx.fillStyle = this.bg;
+    gfx.strokeStyle = this.border;
+    gfx.fillRect(0,0,this.width,this.height);
+    gfx.strokeRect(0,0,this.width,this.height);
+    gfx.strokeStyle = this.line;
+    let c = this.car;
+    gfx.translate(0,this.height);
+    if (c != undefined && c != null) {
+      let stopping = c.speed / c.braking;
+      this.f = this.width / stopping;
+      let lx = 0, ly = 0, tx, ty;
+
+      // Vertex
+      let vx = stopping;
+      let vy = brakingFunc(c,vx);
+      if (vy*this.f > this.height) 
+        this.f = this.height / vy;
+      vx *= this.f;
+      vy *= -this.f;
+      gfxDrawLineP2P(gfx,vx,0,vx,vy);
+
+      // Points per tick
+      for (let x=0;x<stopping;x++) {
+        tx = x * this.f;
+        ty = brakingFunc(c,x);
+        ty *= -this.f;
+        gfx.strokeRect(tx-GPTBOXSZ,ty-GPTBOXSZ, GPTBOXSZ2, GPTBOXSZ2);
+        if (this.f > 2) gfxDrawLineP2P(gfx,lx,ly,tx,ty);
+        lx = tx;
+        ly = ty;
+      }
+      if (this.f > 2) gfxDrawLineP2P(gfx,lx,ly,vx,vy);
+    }
+    gfx.translate(-this.x,-this.y-this.height);
+  }
+}
+
+function brakingFunc(c,x) {
+  return (-c.braking/2)*x*x +
+          (c.speed+c.braking/2)*x;
 }
 
 class Collision {
