@@ -1,6 +1,11 @@
 const CoMBOXSZ = 3;
 const CoMBOXSZ2 = CoMBOXSZ*2;
 
+const RENDER_ROLLOVER = true;
+// Still need to add rollover collision checking.
+const ROLLOVER_FACTOR = 0.85; // TODO: Don't have an overall factor for every car, instead use a measurement on a per car width basis to eliminate any drawing outside of viewport/highway.
+
+const RENDER_GRAPH = false;
 const GPTBOXSZ = 2;
 const GPTBOXSZ2 = GPTBOXSZ*2;
 
@@ -17,7 +22,7 @@ class Traffic {
     this.collisions = [];
     this.grapher = new Grapher(null);
     
-    this.x = 10;
+    this.x = 80;
     this.y = 50;
     this.width = 400;
     this.height = this.lanes.length*(LANESZ+LANEBUF)-LANEBUF; // 42 per car width
@@ -80,6 +85,12 @@ class Traffic {
     }
     for (const col of this.collisions) {
       col.draw(gfx);
+    }
+    if (RENDER_ROLLOVER) {
+      gfx.strokeStyle = "#FFF";
+      gfxDrawLineOffset(gfx, 
+        this.width * -(1-ROLLOVER_FACTOR), 0,
+        0, this.height);
     }
     gfx.translate(-this.x,-this.y);
     this.grapher.draw(gfx);
@@ -176,18 +187,26 @@ class Car {
     
   }
   render(gfx) {
+    this.drawCar(gfx,this.wheelX,this.y);
+    let tw = this.traffic.width;
+    let limit = tw * ROLLOVER_FACTOR;
+    if (RENDER_ROLLOVER && this.wheelX > limit)
+      this.drawCar(gfx, this.wheelX - tw, this.y);
+  }
+  drawCar(gfx,wx,y) {
+    let x = wx + this.xOffset;
     gfx.fillStyle = this.color;
-    gfx.fillRect(this.x,this.y,this.width,this.height);
+    gfx.fillRect(x,y,this.width,this.height);
     gfx.strokeStyle = this.forceColor;
    
-    // gfxDrawLineOffset(gfx, this.x, this.centerY, 
-    //                   this.width, 0);
-    // gfxDrawLineOffset(gfx, this.centerX, this.y,
-    //                  0, this.height);
-    gfxDrawLineP2P(gfx, this.wcx,this.centerY,
-                  this.centerX,this.centerY);
-    gfx.strokeRect(this.x,this.y,this.width,this.height);
-    gfx.strokeRect(this.wcx-CoMBOXSZ,this.centerY-CoMBOXSZ,CoMBOXSZ2,CoMBOXSZ2);
+    let cy = y + this.height/2;
+    let hw = this.width/2;
+    gfxDrawLineP2P(gfx, wx + hw, cy, x + hw, cy);
+    gfx.strokeRect(x,y,
+                 this.width,this.height);
+    gfx.strokeRect(wx+hw-CoMBOXSZ, 
+                   cy-CoMBOXSZ, 
+                   CoMBOXSZ2, CoMBOXSZ2);
   }
 }
 
@@ -211,6 +230,7 @@ class Grapher {
     }
   }
   draw(gfx) {
+    if (!RENDER_GRAPH) return;
     gfx.translate(this.x,this.y);
     gfx.fillStyle = this.bg;
     gfx.strokeStyle = this.border;
